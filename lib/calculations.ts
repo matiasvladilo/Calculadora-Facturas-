@@ -43,12 +43,12 @@ export function calcularProducto(
   // Sin descuento
   const neto_sin_dto = round(calcularNeto(unitario_sin_dto, tipo_precio) + imp_add_unitario);
   const bruto_sin_dto = round(calcularBruto(unitario_sin_dto, tipo_precio) + imp_add_unitario * IVA);
-  const venta_sin_dto = round(neto_sin_dto * multiplicador);
+  const venta_sin_dto = round(bruto_sin_dto * multiplicador);
 
   // Con descuento
   const neto = round(calcularNeto(unitario_con_dto, tipo_precio) + imp_add_unitario);
   const bruto = round(calcularBruto(unitario_con_dto, tipo_precio) + imp_add_unitario * IVA);
-  const venta = round(neto * multiplicador);
+  const venta = round(bruto * multiplicador);
 
   return {
     id,
@@ -77,7 +77,7 @@ export function recalcularVenta(
 ): ProcessedProduct {
   return {
     ...producto,
-    venta: round(producto.neto * multiplicador),
-    venta_sin_dto: round(producto.neto_sin_dto * multiplicador),
+    venta: round(producto.bruto * multiplicador),
+    venta_sin_dto: round(producto.bruto_sin_dto * multiplicador),
   };
 }
