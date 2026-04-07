@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ProcessedProduct } from "@/lib/types";
-import { Pencil, Check, Tag, AlertTriangle } from "lucide-react";
+import { Pencil, Check, Tag, AlertTriangle, Wine } from "lucide-react";
 
 interface Props {
   product: ProcessedProduct;
@@ -69,11 +69,12 @@ export default function ProductCard({ product, onUpdate }: Props) {
     id, producto, cantidad, unidad, neto, bruto, venta,
     neto_sin_dto, bruto_sin_dto, venta_sin_dto,
     descuento_monto, descuento_pct, impuesto_adicional, rayado,
-    precio_total,
+    precio_total, ila_porcentaje, ila_monto,
   } = product;
 
   const tieneDescuento = (descuento_monto && descuento_monto > 0) || (descuento_pct && descuento_pct > 0);
   const tieneImpAdicional = impuesto_adicional && impuesto_adicional > 0;
+  const tieneILA = ila_porcentaje && ila_porcentaje > 0;
 
   const subtitulo = cantidad
     ? `${cantidad} ${unidad} · ${fmt(precio_total)} total`
@@ -113,6 +114,12 @@ export default function ProductCard({ product, onUpdate }: Props) {
             <span className="flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
               <Tag size={10} />
               {descLabel}
+            </span>
+          )}
+          {tieneILA && (
+            <span className="flex items-center gap-1 text-xs bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full">
+              <Wine size={10} />
+              ILA {ila_porcentaje}%{ila_monto ? ` · ${fmt(ila_monto)}` : ""}
             </span>
           )}
           {tieneImpAdicional && (

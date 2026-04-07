@@ -103,11 +103,13 @@ export function parseInvoiceText(text: string): RawProduct[] {
     productos.push({
       producto: nombre,
       precio_total: precio,
+      precio_bruto_factura: null,
       cantidad,
       unidad,
       tipo_precio: tipoPrecio,
       descuento_monto: null,
       descuento_pct: null,
+      ila_porcentaje: 0,
       impuesto_adicional: null,
       rayado: false,
     });
