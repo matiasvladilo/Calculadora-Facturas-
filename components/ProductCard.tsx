@@ -63,7 +63,7 @@ function EditableRow({ label, value, field, highlight, onSave }: RowProps) {
 }
 
 export default function ProductCard({ product, onUpdate }: Props) {
-  const [verSinDto, setVerSinDto] = useState(false);
+  const [verSinDto, setVerSinDto] = useState(true);
 
   const {
     id, producto, cantidad, unidad, neto, bruto, venta,
