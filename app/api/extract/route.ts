@@ -9,30 +9,51 @@ Devuelve SOLO un JSON válido, sin texto adicional ni markdown. Formato exacto:
 [
   {
     "producto": "nombre del producto",
-    "precio_total": 1190,
-    "cantidad": 2,
-    "unidad": "kg",
+    "precio_total": 16344,
+    "cantidad": 16,
+    "unidad": "un",
     "tipo_precio": "neto",
     "descuento_monto": null,
-    "descuento_pct": null,
+    "descuento_pct": 5,
     "impuesto_adicional": null,
     "rayado": false
   }
 ]
 
-Reglas campo por campo:
-- "producto": nombre limpio del producto
-- "precio_total": precio de la línea ANTES de descuento (entero, sin puntos separadores). Si el precio tiene puntos de miles (1.190 → 1190)
-- "cantidad": número si aparece explícito, null si no
-- "unidad": "kg", "g", "lt", "ml", "un", "caja", etc. Usa "un" si no hay unidad. Si viene en gramos (200g, 500g), usa "g"
-- "tipo_precio": "neto" si es FACTURA o precios sin IVA. "bruto" si es BOLETA o precios con IVA incluido
-- "descuento_monto": si hay un descuento expresado en pesos ($), ese valor como entero. null si no hay
-- "descuento_pct": si hay un descuento expresado en porcentaje (%), ese número. null si no hay. NO pongas ambos, solo el que aparezca
-- "impuesto_adicional": si hay impuesto adicional (alcohol, bebidas azucaradas, etc.) separado del IVA, su monto en pesos como entero. null si no hay
-- "rayado": SOLO true si una línea recta cruza de extremo a extremo el texto del producto, anulándolo visualmente. Esto indica que el producto fue eliminado de la factura.
-  NO marcar como rayado si: hay un ticket (✓), un círculo, una marca pequeña al costado, o rayas cortas que son solo indicadores de recepción o verificación. Esas marcas son normales en facturas físicas y el producto SÍ debe incluirse.
+---
+REGLA CRÍTICA — CANTIDADES EN FACTURAS CHILENAS:
+Los sistemas ERP chilenos muestran cantidades con 3 decimales usando coma como separador decimal.
+Ejemplos reales:
+  16,000 UN → cantidad: 16   (NO 16000)
+   9,000 UN → cantidad: 9
+  48,000 UN → cantidad: 48
+   2,000 KG → cantidad: 2
+   1,800 KG → cantidad: 1.8
+   0,720 LT → cantidad: 0.72
+Regla: si ves "X,YYY" en la columna CANTIDAD, el valor real es X.YYY (coma = punto decimal).
+Este negocio es un minimarket — las cantidades reales son siempre pequeñas (1–200 unidades máximo). Si calculas más de 500 unidades, revisa si aplicaste mal la regla.
 
-Ignorar: líneas de total, subtotal, IVA estándar 19%, descuentos globales, datos del proveedor, encabezados, pie de página.`;
+---
+REGLA CRÍTICA — PRECIOS EN FACTURAS CON COLUMNAS:
+Si la factura tiene columnas (PRECIO BASE, DESCUENTO, PRECIO FINAL, MONTO NETO):
+  - "precio_total" = columna MONTO NETO de esa línea (total neto de la línea, entero sin puntos)
+  - "descuento_pct" = el porcentaje de descuento de la columna DESCUENTO (ej: "5.00%" → 5)
+  - NO uses PRECIO BASE ni PRECIO FINAL en precio_total
+Si la factura NO tiene columnas separadas, usa el precio visible de la línea.
+
+---
+REGLAS POR CAMPO:
+- "producto": nombre limpio del producto tal como aparece
+- "precio_total": MONTO NETO total de la línea (entero). Puntos = separador miles (16.344 → 16344)
+- "cantidad": cantidad real aplicando la regla de decimales arriba
+- "unidad": "kg", "g", "lt", "ml", "un", "caja", etc. Usa "un" si no hay unidad
+- "tipo_precio": "neto" si es FACTURA o hay columna NETO. "bruto" si es BOLETA
+- "descuento_monto": monto de descuento en pesos si aparece así. null si no
+- "descuento_pct": porcentaje de descuento si aparece así. null si no. No pongas ambos
+- "impuesto_adicional": impuesto extra (alcohol, bebidas azucaradas, etc.) separado del IVA 19%, en pesos. null si no hay
+- "rayado": true SOLO si una línea recta cruza de extremo a extremo todo el texto del producto (producto anulado). NO marcar como rayado: tickets ✓, círculos, marcas pequeñas al costado — esas son señales de recepción/verificación y el producto SÍ se incluye.
+
+Ignorar: filas de SUB TOTAL, NETO, EXENTO, IVA, TOTAL, datos del emisor, encabezados, pie de página.`;
 
 export async function POST(req: NextRequest) {
   try {
