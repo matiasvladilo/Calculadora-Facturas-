@@ -3,16 +3,17 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const PROMPT = `Analiza esta imagen de una factura o boleta chilena y extrae todos los productos con sus precios.
+const PROMPT = `Analiza esta imagen de una factura o boleta chilena y extrae todos los productos.
 
-Tu respuesta debe ser ÚNICAMENTE el array JSON, sin explicaciones, sin markdown, sin texto antes o después.
-Empieza tu respuesta con [ y termina con ]
+Tu respuesta debe ser ÚNICAMENTE el array JSON. Empieza con [ y termina con ]. Sin markdown, sin texto extra.
 
-Formato de cada producto:
+Formato por producto:
 {
-  "producto": "nombre del producto",
-  "precio_total": 0,
-  "precio_bruto_factura": null,
+  "producto": "nombre limpio",
+  "precio_neto_unitario": null,
+  "precio_bruto_unitario": null,
+  "precio_neto_total": null,
+  "precio_bruto_total": null,
   "cantidad": 1,
   "unidad": "un",
   "tipo_precio": "neto",
@@ -23,41 +24,50 @@ Formato de cada producto:
   "rayado": false
 }
 
+━━━ RAZONAMIENTO DE COLUMNAS ━━━
+Antes de extraer, identifica qué representa cada columna por su nombre. Razona semánticamente:
+
+→ Si el nombre dice "precio unitario bruto", "P.UNIT.BRUTO", "precio unit. bruto", "unit. bruto" o similar
+   = precio bruto POR UNIDAD (ya incluye ILA + IVA) → "precio_bruto_unitario"
+
+→ Si el nombre dice "precio bruto total", "P.BRUTO", "total bruto", "monto bruto" o similar
+   = precio bruto TOTAL de la línea → "precio_bruto_total"
+
+→ Si el nombre dice "precio unitario neto", "P.UNIT.NETO", "unit. neto", "precio neto unit." o similar
+   = precio neto POR UNIDAD → "precio_neto_unitario"
+
+→ Si el nombre dice "total neto", "T.NETO", "monto neto", "neto total" o similar
+   = precio neto TOTAL de la línea → "precio_neto_total"
+
+→ Si el nombre dice "precio base", "precio lista", "valor unit." sin indicar si es neto o bruto:
+   - Si la factura tiene IVA desglosado al final → probablemente neto → "precio_neto_unitario"
+   - Si es boleta → probablemente bruto → "precio_bruto_unitario"
+
+Llena SOLO los campos que tengan datos reales. Los demás déjalos en null.
+NO dupliques el mismo precio en varios campos.
+
 ━━━ CANTIDADES ━━━
-Los ERP chilenos usan coma como decimal con 1-3 decimales:
-  24,0 → 24  |  3,0 → 3  |  1,800 → 1.8  |  0,720 → 0.72  |  16,000 → 16
-Negocio minimarket: máximo ~200 unidades. Si te sale más de 500, revisa.
+ERP chileno: coma = separador decimal. 24,0 → 24 | 3,0 → 3 | 1,800 → 1.8 | 0,720 → 0.72 | 16,000 → 16
+Minimarket: máximo ~200 unidades por ítem.
 
-━━━ COLUMNAS DE PRECIO — lee en este orden de prioridad ━━━
-
-CASO A — factura con columnas P.UNIT.BRUTO + P.BRUTO (precio bruto ya incluye ILA + IVA):
-  → "precio_bruto_factura" = columna P.BRUTO (total de la línea, entero sin puntos)
-  → "precio_total" = 0
-  → "descuento_pct" = columna DESC%
-  → NO recalcular impuestos encima
-
-CASO B — factura con columnas MONTO NETO / T.NETO (precio neto sin IVA):
-  → "precio_total" = esa columna (entero sin puntos)
-  → "precio_bruto_factura" = null
-  → "descuento_pct" = columna DESCUENTO %
-
-CASO C — boleta o factura simple sin columnas separadas:
-  → "precio_total" = precio visible
-  → "precio_bruto_factura" = null
-  → "tipo_precio" = "bruto" si es boleta
+━━━ DESCUENTOS ━━━
+- "descuento_pct": porcentaje de descuento por línea (DESC%, DTO%)
+- "descuento_monto": monto en pesos si el descuento aparece en $
+- Si el precio que ves YA tiene el descuento aplicado (precio final), no pongas descuento — ya está incorporado
 
 ━━━ ILA ━━━
-1. Si hay columna ILA% → usar ese valor exacto (ej: 20,50 → 20.5)
-2. Sin columna ILA, detectar por nombre:
+1. Si hay columna "ILA%" → usar ese valor exacto (20,50 → 20.5 | 31,50 → 31.5)
+2. Si no hay columna, detectar por nombre de producto:
    - cerveza, sidra → 20.5
    - vino, espumante, champagne, cava → 20.5
    - whisky, vodka, ron, pisco, gin, licor, aperol, tequila, brandy, cognac → 31.5
    - todo lo demás → 0
 
 ━━━ OTRAS REGLAS ━━━
-- "rayado": true SOLO si una línea cruza de punta a punta el texto del producto. Círculos, tickets ✓ y marcas al costado son señales de recepción — NO es rayado.
-- "producto": nombre limpio sin código ni datos de cantidad
-- Ignorar: SERVICIOS LOGISTICOS, totales, IVA, descuentos globales, datos del cliente/emisor`;
+- "rayado": true SOLO si una línea recta cruza TODO el texto del producto de punta a punta.
+  Círculos ◯, tickets ✓, marcas cortas al costado = verificación de recepción, NO es rayado.
+- "tipo_precio": "neto" si es factura con IVA desglosado. "bruto" si es boleta.
+- Ignorar: SERVICIOS LOGISTICOS, filas de totales, IVA, descuentos globales, datos del emisor/cliente.`;
 
 export async function POST(req: NextRequest) {
   let rawRespuesta = "";

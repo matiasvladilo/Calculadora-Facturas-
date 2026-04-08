@@ -102,8 +102,10 @@ export function parseInvoiceText(text: string): RawProduct[] {
 
     productos.push({
       producto: nombre,
-      precio_total: precio,
-      precio_bruto_factura: null,
+      precio_neto_unitario: null,
+      precio_bruto_unitario: null,
+      precio_neto_total: precio,
+      precio_bruto_total: null,
       cantidad,
       unidad,
       tipo_precio: tipoPrecio,
