@@ -24,6 +24,8 @@ export default function Home() {
   const [multiplicador, setMultiplicador] = useState(1.5);
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [errorDebug, setErrorDebug] = useState<string | null>(null);
+  const [mostrarDebug, setMostrarDebug] = useState(false);
 
   function handleImage(file: File) {
     setImageFile(file);
@@ -57,6 +59,8 @@ export default function Home() {
 
     setStep("loading");
     setError(null);
+    setErrorDebug(null);
+    setMostrarDebug(false);
 
     try {
       const form = new FormData();
@@ -65,7 +69,10 @@ export default function Home() {
       const res = await fetch("/api/extract", { method: "POST", body: form });
       const data = await res.json();
 
-      if (!res.ok) throw new Error(data.error || "Error del servidor");
+      if (!res.ok) {
+        if (data.debug) setErrorDebug(data.debug);
+        throw new Error(data.error || "Error del servidor");
+      }
 
       const raw: RawProduct[] = data.productos ?? [];
       const ts = Date.now();
@@ -199,8 +206,18 @@ export default function Home() {
             <MultiplierSelector value={multiplicador} onChange={handleMultiplicadorChange} disabled={false} />
 
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
-                {error}
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 space-y-2">
+                <p>{error}</p>
+                {errorDebug && (
+                  <>
+                    <button onClick={() => setMostrarDebug(v => !v)} className="text-xs underline text-red-400">
+                      {mostrarDebug ? "Ocultar respuesta IA" : "Ver respuesta IA"}
+                    </button>
+                    {mostrarDebug && (
+                      <pre className="text-xs bg-red-100 rounded p-2 whitespace-pre-wrap break-words">{errorDebug}</pre>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
