@@ -3,6 +3,16 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+type SupportedMediaType = "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+
+function detectMediaType(buffer: Buffer): SupportedMediaType {
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) return "image/jpeg";
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return "image/png";
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return "image/gif";
+  if (buffer.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  return "image/jpeg"; // fallback seguro
+}
+
 const PROMPT_ANALISIS = `Eres un experto en facturas chilenas de distribuidoras de alimentos y bebidas.
 
 Primero analiza la estructura de este documento dentro de <analisis> tags.
@@ -68,7 +78,7 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await image.arrayBuffer());
     const base64 = buffer.toString("base64");
-    const mediaType = (image.type as "image/jpeg" | "image/png" | "image/webp" | "image/gif") || "image/jpeg";
+    const mediaType = detectMediaType(buffer);
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
