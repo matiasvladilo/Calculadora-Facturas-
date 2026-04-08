@@ -27,8 +27,9 @@ Responde estas preguntas observando la imagen:
 5. ¿Los precios son netos (sin IVA) o brutos (con IVA incluido)?
 6. ¿Hay columnas de ILA, IABA u otro impuesto adicional? ¿Con qué porcentaje?
 7. ¿Hay columna de descuento? ¿En % o en $?
-8. ¿Las cantidades usan coma como decimal? (ej: 24,0 = 24 unidades)
+8. ¿Las cantidades usan coma como decimal? (ej: 24,0 = 24 unidades; 16,000 = 16 unidades, NO 16000)
 9. ¿Hay productos en packs/cajas con múltiples unidades? (X6, X12, 6PK, etc.)
+10. ¿Hay DOS columnas de cantidad? Por ejemplo "CJ" (cajas) Y "UNS/UN" (unidades). Si hay ambas, ¿cuál representa las unidades individuales de consumo?
 </analisis>
 
 <json>
@@ -59,7 +60,7 @@ REGLAS DE CAMPOS:
 - precio_bruto_total: total de la línea con IVA+ILA. Ej: columna "P.BRUTO", "Total Factura"
 - Llena SOLO los campos relevantes. Los demás null. NO dupliques el mismo precio en dos campos.
 
-- cantidad: número real de unidades. Si la factura muestra "24,0" con coma decimal → 24. Si muestra cajas (CJ) de X6 → cantidad = número de cajas, el precio unitario viene de "Total Unidad"
+- cantidad: número de UNIDADES INDIVIDUALES de consumo. Si hay columnas "CJ" (cajas) Y "UNS/UN" (unidades), usa SIEMPRE el valor de unidades individuales (UNS/UN), NO el de cajas. Si la factura muestra "16,000" con coma decimal → 16 unidades (la coma es decimal, NO separador de miles). Si muestra cajas (CJ) sin columna de unidades individuales, y el precio ya es por unidad individual ("Total Unidad"), entonces cantidad = número de cajas.
 - ila_porcentaje: usa el valor exacto de la columna ILA/IABA si existe por fila. Si no, infiere por tipo de producto: cerveza/vino 20.5, destilados 31.5, bebida azucarada 10-18, resto 0
 - descuento_pct: % de descuento por línea si existe como columna separada
 - rayado: true SOLO si una línea recta cruza completamente el texto del producto. Círculos, ticks ✓ y marcas al costado = recepción verificada, NO es rayado
