@@ -7,7 +7,13 @@ import ProductCard from "@/components/ProductCard";
 import LoadingState from "@/components/LoadingState";
 import { ProcessedProduct, RawProduct } from "@/lib/types";
 import { calcularProducto, recalcularVenta } from "@/lib/calculations";
-import { ReceiptText, RefreshCw } from "lucide-react";
+import { ReceiptText, RefreshCw, PlusCircle, Trash2 } from "lucide-react";
+
+interface Factura {
+  id: string;
+  nombre: string;
+  productos: ProcessedProduct[];
+}
 
 type Step = "input" | "loading" | "results";
 
@@ -16,10 +22,8 @@ export default function Home() {
   const [preview, setPreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [multiplicador, setMultiplicador] = useState(1.5);
-  const [productos, setProductos] = useState<ProcessedProduct[]>([]);
+  const [facturas, setFacturas] = useState<Factura[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [textoOCR, setTextoOCR] = useState<string | null>(null);
-  const [mostrarOCR, setMostrarOCR] = useState(false);
 
   function handleImage(file: File) {
     setImageFile(file);
@@ -36,7 +40,12 @@ export default function Home() {
   function handleMultiplicadorChange(v: number) {
     setMultiplicador(v);
     if (step === "results") {
-      setProductos((prev) => prev.map((p) => recalcularVenta(p, v)));
+      setFacturas((prev) =>
+        prev.map((f) => ({
+          ...f,
+          productos: f.productos.map((p) => recalcularVenta(p, v)),
+        }))
+      );
     }
   }
 
@@ -56,19 +65,24 @@ export default function Home() {
       const res = await fetch("/api/extract", { method: "POST", body: form });
       const data = await res.json();
 
-      if (data.textoOCR) setTextoOCR(data.textoOCR);
       if (!res.ok) throw new Error(data.error || "Error del servidor");
 
       const raw: RawProduct[] = data.productos ?? [];
-      const processed = raw.map((r, i) =>
-        calcularProducto(r, multiplicador, `${i}-${Date.now()}`)
-      );
+      const ts = Date.now();
+      const processed = raw.map((r, i) => calcularProducto(r, multiplicador, `${i}-${ts}`));
 
-      setProductos(processed);
+      const nombre = imageFile.name !== "image" ? imageFile.name.replace(/\.[^.]+$/, "") : `Factura ${facturas.length + 1}`;
+
+      setFacturas((prev) => [
+        ...prev,
+        { id: String(ts), nombre, productos: processed },
+      ]);
       setStep("results");
+      setImageFile(null);
+      setPreview(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado");
-      setStep("input");
+      setStep(facturas.length > 0 ? "results" : "input");
     }
   }
 
@@ -76,36 +90,39 @@ export default function Home() {
     setStep("input");
     setPreview(null);
     setImageFile(null);
-    setProductos([]);
+    setFacturas([]);
     setError(null);
-    setTextoOCR(null);
-    setMostrarOCR(false);
   }
 
-  function handleUpdateProduct(
-    id: string,
-    field: "neto" | "bruto" | "venta",
-    value: number
-  ) {
-    setProductos((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        const IVA = 1.19;
-        if (field === "neto") {
-          return { ...p, neto: value, bruto: Math.round(value * IVA), venta: Math.round(value * multiplicador), editado: true };
-        }
-        if (field === "bruto") {
-          const neto = Math.round(value / IVA);
-          return { ...p, bruto: value, neto, venta: Math.round(neto * multiplicador), editado: true };
-        }
-        return { ...p, venta: value, editado: true };
+  function handleEliminarFactura(id: string) {
+    const nuevas = facturas.filter((f) => f.id !== id);
+    setFacturas(nuevas);
+    if (nuevas.length === 0) setStep("input");
+  }
+
+  function handleUpdateProduct(facturaId: string, id: string, field: "neto" | "bruto" | "venta", value: number) {
+    const IVA = 1.19;
+    setFacturas((prev) =>
+      prev.map((f) => {
+        if (f.id !== facturaId) return f;
+        return {
+          ...f,
+          productos: f.productos.map((p) => {
+            if (p.id !== id) return p;
+            if (field === "neto") return { ...p, neto: value, bruto: Math.round(value * IVA), venta: Math.round(value * multiplicador), editado: true };
+            if (field === "bruto") {
+              const neto = Math.round(value / IVA);
+              return { ...p, bruto: value, neto, venta: Math.round(neto * multiplicador), editado: true };
+            }
+            return { ...p, venta: value, editado: true };
+          }),
+        };
       })
     );
   }
 
   return (
     <div className="flex flex-col flex-1 pb-8">
-      {/* Header */}
       <header className="px-4 pt-10 pb-6">
         <div className="flex items-center gap-2">
           <ReceiptText size={22} className="text-black" />
@@ -119,41 +136,55 @@ export default function Home() {
           <LoadingState />
         ) : step === "results" ? (
           <>
-            {/* Multiplicador editable en resultados */}
-            <MultiplierSelector
-              value={multiplicador}
-              onChange={handleMultiplicadorChange}
-              disabled={false}
-            />
+            <MultiplierSelector value={multiplicador} onChange={handleMultiplicadorChange} disabled={false} />
 
-            <div className="flex flex-col gap-3">
-              {productos.map((p) => (
-                <ProductCard key={p.id} product={p} onUpdate={handleUpdateProduct} />
-              ))}
-            </div>
+            {facturas.map((factura, fi) => (
+              <div key={factura.id} className="flex flex-col gap-3">
+                {/* Cabecera de factura */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white bg-black rounded-full w-5 h-5 flex items-center justify-center">
+                      {fi + 1}
+                    </span>
+                    <span className="text-sm font-semibold text-zinc-700 truncate max-w-[220px]">
+                      {factura.nombre}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleEliminarFactura(factura.id)}
+                    className="text-zinc-400 active:text-red-500 transition p-1"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
 
-            {textoOCR && (
-              <div className="text-xs text-zinc-400 space-y-1">
-                <button
-                  onClick={() => setMostrarOCR((v) => !v)}
-                  className="underline"
-                >
-                  {mostrarOCR ? "Ocultar texto OCR" : "Ver texto detectado"}
-                </button>
-                {mostrarOCR && (
-                  <pre className="bg-zinc-100 rounded-xl p-3 overflow-x-auto whitespace-pre-wrap break-words text-zinc-600">
-                    {textoOCR}
-                  </pre>
-                )}
+                {factura.productos.map((p) => (
+                  <ProductCard
+                    key={p.id}
+                    product={p}
+                    onUpdate={(id, field, value) => handleUpdateProduct(factura.id, id, field, value)}
+                  />
+                ))}
               </div>
+            ))}
+
+            {/* Agregar otra factura */}
+            {step === "results" && (
+              <button
+                onClick={() => setStep("input")}
+                className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl border-2 border-dashed border-zinc-300 text-zinc-600 font-semibold text-sm active:bg-zinc-100 transition"
+              >
+                <PlusCircle size={16} />
+                Agregar otra factura
+              </button>
             )}
 
             <button
               onClick={handleReset}
-              className="mt-2 flex items-center justify-center gap-2 w-full py-4 rounded-2xl border-2 border-zinc-200 text-zinc-700 font-semibold text-sm active:bg-zinc-100 transition"
+              className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl border-2 border-zinc-200 text-zinc-500 font-semibold text-sm active:bg-zinc-100 transition"
             >
-              <RefreshCw size={16} />
-              Nueva factura
+              <RefreshCw size={15} />
+              Empezar de nuevo
             </button>
           </>
         ) : (
@@ -165,40 +196,31 @@ export default function Home() {
               disabled={false}
             />
 
-            <MultiplierSelector
-              value={multiplicador}
-              onChange={handleMultiplicadorChange}
-              disabled={false}
-            />
+            <MultiplierSelector value={multiplicador} onChange={handleMultiplicadorChange} disabled={false} />
 
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 space-y-2">
-                <p>{error}</p>
-                {textoOCR && (
-                  <>
-                    <button
-                      onClick={() => setMostrarOCR((v) => !v)}
-                      className="text-xs underline text-red-500"
-                    >
-                      {mostrarOCR ? "Ocultar" : "Ver texto detectado"}
-                    </button>
-                    {mostrarOCR && (
-                      <pre className="text-xs bg-red-100 rounded p-2 overflow-x-auto whitespace-pre-wrap break-words">
-                        {textoOCR}
-                      </pre>
-                    )}
-                  </>
-                )}
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+                {error}
               </div>
             )}
 
-            <button
-              onClick={handleAnalizar}
-              disabled={!imageFile}
-              className="w-full py-4 rounded-2xl bg-black text-white font-bold text-base transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Analizar factura
-            </button>
+            <div className="flex gap-3">
+              {facturas.length > 0 && (
+                <button
+                  onClick={() => setStep("results")}
+                  className="flex-1 py-4 rounded-2xl border-2 border-zinc-200 text-zinc-700 font-bold text-sm active:bg-zinc-100 transition"
+                >
+                  Volver ({facturas.length})
+                </button>
+              )}
+              <button
+                onClick={handleAnalizar}
+                disabled={!imageFile}
+                className="flex-1 py-4 rounded-2xl bg-black text-white font-bold text-base transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Analizar factura
+              </button>
+            </div>
           </>
         )}
       </div>
