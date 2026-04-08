@@ -135,6 +135,39 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Sanitizar: Claude a veces devuelve números como strings con formato ("1,636.2", "5.698", etc.)
+    const CAMPOS_NUMERICOS = [
+      "precio_neto_unitario", "precio_bruto_unitario",
+      "precio_neto_total", "precio_bruto_total",
+      "cantidad", "descuento_monto", "descuento_pct",
+      "ila_porcentaje", "impuesto_adicional",
+    ];
+
+    productos = productos.map((p: Record<string, unknown>) => {
+      const limpio = { ...p };
+      for (const campo of CAMPOS_NUMERICOS) {
+        const val = limpio[campo];
+        if (val === null || val === undefined) { limpio[campo] = null; continue; }
+        if (typeof val === "number") continue;
+        // Convertir string con formato chileno/internacional a número
+        // Ej: "1,636.2" → 1636.2 | "5.698" → 5698 | "1.636,2" → 1636.2
+        let s = String(val).trim().replace(/[$ ]/g, "");
+        if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
+          // Formato con punto miles y coma decimal: "1.636,2" → "1636.2"
+          s = s.replace(/\./g, "").replace(",", ".");
+        } else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) {
+          // Formato con coma miles y punto decimal: "1,636.2" → "1636.2"
+          s = s.replace(/,/g, "");
+        } else {
+          // Sin separador de miles: reemplazar coma decimal si existe
+          s = s.replace(",", ".");
+        }
+        const n = parseFloat(s);
+        limpio[campo] = isNaN(n) ? null : n;
+      }
+      return limpio;
+    });
+
     if (!Array.isArray(productos) || productos.length === 0) {
       return NextResponse.json({ error: "No se encontraron productos en la imagen." }, { status: 422 });
     }
