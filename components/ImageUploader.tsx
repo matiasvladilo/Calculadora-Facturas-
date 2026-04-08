@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { Camera, Upload, X, ImageUp, ClipboardPaste } from "lucide-react";
+import { Camera, X, ImageUp, ClipboardPaste } from "lucide-react";
 
 interface Props {
   onImage: (file: File) => void;
@@ -10,24 +10,58 @@ interface Props {
   disabled: boolean;
 }
 
+// Convierte cualquier imagen (HEIC, BMP, WEBP, etc.) a JPEG vía canvas
+// Garantiza que Anthropic siempre recibe un formato soportado
+function toJpeg(source: File | Blob): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(source);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext("2d")!.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(new File([blob], "factura.jpg", { type: "image/jpeg" }));
+          else reject(new Error("No se pudo convertir la imagen"));
+        },
+        "image/jpeg",
+        0.92
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Imagen inválida")); };
+    img.src = url;
+  });
+}
+
 export default function ImageUploader({ onImage, preview, onClear, disabled }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [pasted, setPasted] = useState(false);
 
-  // Paste global (Ctrl+V / Cmd+V)
+  async function processFile(source: File | Blob) {
+    try {
+      const jpeg = await toJpeg(source);
+      onImage(jpeg);
+    } catch {
+      // Si la conversión falla (ej. archivo corrupto), ignorar
+    }
+  }
+
+  // Paste global Ctrl+V / Cmd+V
   useEffect(() => {
     if (preview) return;
-
-    function handlePaste(e: ClipboardEvent) {
+    async function handlePaste(e: ClipboardEvent) {
       const items = e.clipboardData?.items;
       if (!items) return;
       for (const item of items) {
         if (item.type.startsWith("image/")) {
           const file = item.getAsFile();
           if (file) {
-            onImage(file);
+            await processFile(file);
             setPasted(true);
             setTimeout(() => setPasted(false), 1500);
           }
@@ -35,22 +69,22 @@ export default function ImageUploader({ onImage, preview, onClear, disabled }: P
         }
       }
     }
-
     document.addEventListener("paste", handlePaste);
     return () => document.removeEventListener("paste", handlePaste);
-  }, [preview, onImage]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview]);
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (file) onImage(file);
+    if (file) await processFile(file);
     e.target.value = "";
   }
 
-  function handleDrop(e: React.DragEvent) {
+  async function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragging(false);
     const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith("image/")) onImage(file);
+    if (file) await processFile(file);
   }
 
   function handleDragOver(e: React.DragEvent) {
@@ -68,10 +102,7 @@ export default function ImageUploader({ onImage, preview, onClear, disabled }: P
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={preview} alt="Factura" className="w-full object-contain max-h-64" />
         {!disabled && (
-          <button
-            onClick={onClear}
-            className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1"
-          >
+          <button onClick={onClear} className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1">
             <X size={18} />
           </button>
         )}
@@ -84,18 +115,15 @@ export default function ImageUploader({ onImage, preview, onClear, disabled }: P
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
 
-      {/* Zona principal: drag & drop + paste */}
       <div
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onClick={() => fileRef.current?.click()}
         className={`flex flex-col items-center justify-center gap-3 py-10 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${
-          pasted
-            ? "border-emerald-400 bg-emerald-50"
-            : dragging
-            ? "border-black bg-zinc-100"
-            : "border-zinc-300 bg-zinc-50 active:bg-zinc-100"
+          pasted ? "border-emerald-400 bg-emerald-50"
+          : dragging ? "border-black bg-zinc-100"
+          : "border-zinc-300 bg-zinc-50 active:bg-zinc-100"
         }`}
       >
         <ImageUp size={32} className={dragging ? "text-black" : pasted ? "text-emerald-500" : "text-zinc-400"} />
@@ -107,7 +135,6 @@ export default function ImageUploader({ onImage, preview, onClear, disabled }: P
         </div>
       </div>
 
-      {/* Fila inferior: pegar + cámara */}
       <div className="grid grid-cols-2 gap-3">
         <button
           onClick={async () => {
@@ -117,12 +144,12 @@ export default function ImageUploader({ onImage, preview, onClear, disabled }: P
                 const imgType = item.types.find((t) => t.startsWith("image/"));
                 if (imgType) {
                   const blob = await item.getType(imgType);
-                  onImage(new File([blob], "pegado.png", { type: imgType }));
+                  await processFile(blob);
                   break;
                 }
               }
             } catch {
-              // Si el API falla, el paste global (Ctrl+V) sigue funcionando
+              // clipboard.read() puede fallar por permisos — el paste Ctrl+V sigue disponible
             }
           }}
           className="flex items-center justify-center gap-2 py-3.5 rounded-2xl border-2 border-zinc-200 bg-white active:bg-zinc-50 transition"
