@@ -25,49 +25,71 @@ Formato por producto:
 }
 
 ━━━ RAZONAMIENTO DE COLUMNAS ━━━
-Antes de extraer, identifica qué representa cada columna por su nombre. Razona semánticamente:
+Antes de extraer, razona qué representa cada columna por su nombre. No busques texto exacto — infiere semánticamente:
 
-→ Si el nombre dice "precio unitario bruto", "P.UNIT.BRUTO", "precio unit. bruto", "unit. bruto" o similar
-   = precio bruto POR UNIDAD (ya incluye ILA + IVA) → "precio_bruto_unitario"
+PRECIO BRUTO POR UNIDAD → "precio_bruto_unitario"
+  Nombres posibles: "Total Unidad", "Total Unid.", "Unid.", "P.UNIT.BRUTO", "precio unit. bruto", "valor unidad", "precio por unidad"
+  Este valor ya incluye ILA + IVA y es por unidad individual (no por caja/pack).
+  ★ IMPORTANTE: Si la factura tiene columna "Total Unidad" — ESE es el campo a usar como precio_bruto_unitario.
 
-→ Si el nombre dice "precio bruto total", "P.BRUTO", "total bruto", "monto bruto" o similar
-   = precio bruto TOTAL de la línea → "precio_bruto_total"
+PRECIO NETO TOTAL DE LA LÍNEA → "precio_neto_total"
+  Nombres posibles: "Valor", "T.NETO", "Monto Neto", "Neto", "Sub Neto", "Importe"
+  Es el neto acumulado de todos las unidades de esa fila, sin IVA ni ILA.
 
-→ Si el nombre dice "precio unitario neto", "P.UNIT.NETO", "unit. neto", "precio neto unit." o similar
-   = precio neto POR UNIDAD → "precio_neto_unitario"
+PRECIO NETO POR UNIDAD → "precio_neto_unitario"
+  Nombres posibles: "Precio Unit", "Precio Unitario", "P.UNIT.NETO", "Precio Base"
+  Si hay IVA desglosado al pie → es neto.
 
-→ Si el nombre dice "total neto", "T.NETO", "monto neto", "neto total" o similar
-   = precio neto TOTAL de la línea → "precio_neto_total"
+PRECIO BRUTO TOTAL → "precio_bruto_total"
+  Nombres posibles: "P.BRUTO", "Total Bruto", "Total Factura línea"
 
-→ Si el nombre dice "precio base", "precio lista", "valor unit." sin indicar si es neto o bruto:
-   - Si la factura tiene IVA desglosado al final → probablemente neto → "precio_neto_unitario"
-   - Si es boleta → probablemente bruto → "precio_bruto_unitario"
+Llena SOLO los campos con datos reales. Los demás déjalos en null. NO dupliques el mismo precio en dos campos.
 
-Llena SOLO los campos que tengan datos reales. Los demás déjalos en null.
-NO dupliques el mismo precio en varios campos.
+━━━ PACKS Y SIXPACKS (cajas con unidades múltiples) ━━━
+Muchas facturas de distribuidoras venden en cajas (CJ) que contienen múltiples unidades.
+El nombre del producto indica el contenido: X6 = 6 unidades, X12 = 12, X24 = 24, 6PK = 6-pack, etc.
+
+Cuando existe columna "Total Unidad":
+  → "precio_bruto_unitario" = ese valor (precio por unidad individual ya con ILA+IVA)
+  → "cantidad" = número de cajas (de la columna Cantidad)
+  → "unidad" = "cj" (caja) o lo que diga la columna UIM/Unidad
+  → NO dividas ni multipliques el precio — úsalo directo
+
+Cuando NO existe "Total Unidad":
+  → Usa "precio_neto_total" = columna Valor/Neto (total de la línea)
+  → "cantidad" = número de cajas
+  → El sistema calculará el precio unitario dividiendo por cajas
 
 ━━━ CANTIDADES ━━━
-ERP chileno: coma = separador decimal. 24,0 → 24 | 3,0 → 3 | 1,800 → 1.8 | 0,720 → 0.72 | 16,000 → 16
-Minimarket: máximo ~200 unidades por ítem.
+ERP chileno: coma = decimal. 24,0 → 24 | 3,0 → 3 | 1,800 → 1.8 | 0,720 → 0.72 | 16,000 → 16
+Minimarket: máximo ~200 unidades. Si calculás más de 500, revisa.
 
 ━━━ DESCUENTOS ━━━
-- "descuento_pct": porcentaje de descuento por línea (DESC%, DTO%)
-- "descuento_monto": monto en pesos si el descuento aparece en $
-- Si el precio que ves YA tiene el descuento aplicado (precio final), no pongas descuento — ya está incorporado
+- "descuento_pct": % de descuento por línea (DESC%, DTO%, columna %)
+- "descuento_monto": monto en $ si el descuento aparece así
+- Si el precio que ves YA tiene el descuento aplicado → no pongas descuento (ya incluido)
 
-━━━ ILA ━━━
-1. Si hay columna "ILA%" → usar ese valor exacto (20,50 → 20.5 | 31,50 → 31.5)
-2. Si no hay columna, detectar por nombre de producto:
+━━━ ILA / IABA ━━━
+Algunas facturas usan "IABA" en vez de "ILA" (bebidas analcohólicas con azúcar). Tratalos igual.
+1. Si hay columna ILA% o IABA% con valor por fila → usar ese valor exacto por producto
+2. Si hay columnas separadas IABA 10% / IABA 18% / ILA CER 20.5% / ILA VIN 20.5% / ILA 31.5%:
+   → Lee cuál aplica a cada producto según en qué columna tiene valor
+   → IABA 10% o IABA 18% → ila_porcentaje: 10 o 18
+   → ILA CER/VIN 20.5% → ila_porcentaje: 20.5
+   → ILA 31.5% → ila_porcentaje: 31.5
+3. Si no hay columna ILA/IABA, detectar por nombre:
    - cerveza, sidra → 20.5
    - vino, espumante, champagne, cava → 20.5
    - whisky, vodka, ron, pisco, gin, licor, aperol, tequila, brandy, cognac → 31.5
-   - todo lo demás → 0
+   - bebida energética, gatorade, jugo, refresco, bebida con azúcar → 10 o 18 (usa lo que muestre la factura)
+   - agua sin azúcar, lácteo, alimento sólido → 0
 
 ━━━ OTRAS REGLAS ━━━
-- "rayado": true SOLO si una línea recta cruza TODO el texto del producto de punta a punta.
-  Círculos ◯, tickets ✓, marcas cortas al costado = verificación de recepción, NO es rayado.
-- "tipo_precio": "neto" si es factura con IVA desglosado. "bruto" si es boleta.
-- Ignorar: SERVICIOS LOGISTICOS, filas de totales, IVA, descuentos globales, datos del emisor/cliente.`;
+- "rayado": true SOLO si una línea cruza TODO el texto del producto de extremo a extremo.
+  Círculos ◯, tickets ✓, marcas cortas al costado = recepción verificada, NO es rayado.
+- "tipo_precio": "neto" si es factura con IVA desglosado al pie. "bruto" si es boleta.
+- "producto": nombre limpio. Puedes abreviar si es muy largo pero conserva la info clave (sabor, formato, tamaño).
+- Ignorar: SERVICIOS LOGISTICOS, Flete de Mercaderías, filas de subtotales/totales/IVA, datos del emisor/cliente.`;
 
 export async function POST(req: NextRequest) {
   let rawRespuesta = "";
