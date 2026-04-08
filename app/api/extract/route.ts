@@ -33,6 +33,7 @@ Responde estas preguntas observando la imagen:
 
 <json>
 Basándote en tu análisis, extrae TODOS los productos como array JSON.
+IMPORTANTE: Todos los valores numéricos deben ser números planos SIN formato — sin puntos ni comas como separadores de miles. Usa punto decimal si es necesario. Ejemplos: 16344 no "16.344", 16 no "16,000", 1636.2 no "1.636,2".
 Un objeto por producto, con estos campos exactos:
 
 {
@@ -148,15 +149,17 @@ export async function POST(req: NextRequest) {
       for (const campo of CAMPOS_NUMERICOS) {
         const val = limpio[campo];
         if (val === null || val === undefined) { limpio[campo] = null; continue; }
-        if (typeof val === "number") continue;
-        // Convertir string con formato chileno/internacional a número
-        // Ej: "1,636.2" → 1636.2 | "5.698" → 5698 | "1.636,2" → 1636.2
+        // Siempre sanitizar — Claude puede devolver 16.344 como float JSON (= 16344 pesos chilenos)
+        // String() convierte el number a string, luego la regex detecta el formato correcto
         let s = String(val).trim().replace(/[$ ]/g, "");
         if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
           // Formato con punto miles y coma decimal: "1.636,2" → "1636.2"
           s = s.replace(/\./g, "").replace(",", ".");
+        } else if (/^\d+,0+$/.test(s)) {
+          // Formato ERP chileno: "16,000" = 16 unidades (coma decimal, ceros finales)
+          s = s.replace(/,0+$/, "");
         } else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) {
-          // Formato con coma miles y punto decimal: "1,636.2" → "1636.2"
+          // Formato anglosajón con coma miles y punto decimal: "1,636.2" → "1636.2"
           s = s.replace(/,/g, "");
         } else {
           // Sin separador de miles: reemplazar coma decimal si existe
