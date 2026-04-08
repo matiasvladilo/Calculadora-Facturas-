@@ -29,7 +29,14 @@ export function calcularProducto(raw: RawProduct, multiplicador: number, id: str
 
   if (precio_neto_unitario && precio_neto_unitario > 0) {
     // Columna P.UNIT.NETO — ya es unitario neto
-    netoUnitBase = precio_neto_unitario;
+    // Sanity check: si hay precio_neto_total, verificar consistencia
+    // Si precio_neto_unitario * cant difiere del total en >50%, Claude confundió la columna
+    if (precio_neto_total && precio_neto_total > 0 && cant > 1) {
+      const ratio = Math.abs(precio_neto_unitario * cant - precio_neto_total) / precio_neto_total;
+      netoUnitBase = ratio > 0.5 ? precio_neto_total / cant : precio_neto_unitario;
+    } else {
+      netoUnitBase = precio_neto_unitario;
+    }
 
   } else if (precio_bruto_unitario && precio_bruto_unitario > 0) {
     // Columna P.UNIT.BRUTO — back-calculamos neto: bruto / ((1 + ILA%) × IVA)

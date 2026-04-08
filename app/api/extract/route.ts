@@ -54,11 +54,11 @@ Un objeto por producto, con estos campos exactos:
 }
 
 REGLAS DE CAMPOS:
-- precio_bruto_unitario: precio por unidad individual YA con IVA e ILA incluidos. Usar cuando la factura lo da directamente (ej: columna "Total Unidad", "Precio Unidad", "P.UNIT.BRUTO")
-- precio_neto_unitario: precio por unidad sin IVA. Usar cuando la factura lo da directamente
-- precio_neto_total: total neto de la línea (todas las unidades, sin IVA). Ej: columna "Valor", "Neto", "T.NETO", "Monto Neto"
-- precio_bruto_total: total de la línea con IVA+ILA. Ej: columna "P.BRUTO", "Total Factura"
-- Llena SOLO los campos relevantes. Los demás null. NO dupliques el mismo precio en dos campos.
+- precio_neto_unitario: precio por unidad SIN IVA. SOLO usar si la factura tiene columna EXPLÍCITA de precio neto por unidad (ej: "P.UNIT.NETO", "PRECIO UNIT NETO"). NO calcular dividiendo el total.
+- precio_bruto_unitario: precio por unidad individual YA con IVA e ILA incluidos. SOLO usar si la factura lo da directamente (ej: columna "Total Unidad", "Precio Unidad", "P.UNIT.BRUTO").
+- precio_neto_total: total neto de la línea (todas las unidades, sin IVA). Ej: columna "Valor", "Neto", "T.NETO", "Monto Neto". Este es el campo MÁS CONFIABLE en facturas chilenas — úsalo cuando exista.
+- precio_bruto_total: total de la línea con IVA+ILA. Ej: columna "P.BRUTO", "Total Factura".
+- Llena SOLO los campos relevantes. Los demás null. NO dupliques el mismo precio en dos campos. Si hay precio_neto_total, no necesitas calcular precio_neto_unitario.
 
 - cantidad: número de UNIDADES INDIVIDUALES de consumo. Si hay columnas "CJ" (cajas) Y "UNS/UN" (unidades), usa SIEMPRE el valor de unidades individuales (UNS/UN), NO el de cajas. Si la factura muestra "16,000" con coma decimal → 16 unidades (la coma es decimal, NO separador de miles). Si muestra cajas (CJ) sin columna de unidades individuales, y el precio ya es por unidad individual ("Total Unidad"), entonces cantidad = número de cajas.
 - ila_porcentaje: usa el valor exacto de la columna ILA/IABA si existe por fila. Si no, infiere por tipo de producto: cerveza/vino 20.5, destilados 31.5, bebida azucarada 10-18, resto 0
