@@ -85,42 +85,23 @@ export async function POST(req: NextRequest) {
     const base64 = buffer.toString("base64");
     const mediaType = detectMediaType(buffer);
 
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          const anthropicStream = client.messages.stream({
-            model: "claude-sonnet-4-6",
-            max_tokens: 4000,
-            messages: [
-              {
-                role: "user",
-                content: [
-                  { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-                  { type: "text", text: PROMPT_ANALISIS },
-                ],
-              },
-            ],
-          });
-
-          for await (const chunk of anthropicStream) {
-            if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
-              controller.enqueue(encoder.encode(chunk.delta.text));
-            }
-          }
-          controller.close();
-        } catch (err) {
-          controller.error(err);
-        }
-      },
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4000,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+            { type: "text", text: PROMPT_ANALISIS },
+          ],
+        },
+      ],
     });
 
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "X-Accel-Buffering": "no",
-        "Cache-Control": "no-cache",
-      },
+    const rawText = response.content[0].type === "text" ? response.content[0].text : "";
+    return new Response(rawText, {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (err) {
     console.error("Error:", err);
