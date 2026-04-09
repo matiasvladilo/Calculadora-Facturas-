@@ -12,24 +12,42 @@ interface Props {
 
 // Convierte cualquier imagen (HEIC, BMP, WEBP, etc.) a JPEG vía canvas
 // Garantiza que Anthropic siempre recibe un formato soportado
+const MAX_PX = 1920;
+const MAX_BYTES = 4.5 * 1024 * 1024; // 4.5 MB — margen bajo el límite de 5 MB de Anthropic
+
 function toJpeg(source: File | Blob): Promise<File> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(source);
     const img = new Image();
     img.onload = () => {
+      // Escalar si alguna dimensión supera MAX_PX
+      const scale = Math.min(1, MAX_PX / Math.max(img.naturalWidth, img.naturalHeight));
       const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      canvas.getContext("2d")!.drawImage(img, 0, 0);
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
-      canvas.toBlob(
-        (blob) => {
-          if (blob) resolve(new File([blob], "factura.jpg", { type: "image/jpeg" }));
-          else reject(new Error("No se pudo convertir la imagen"));
-        },
-        "image/jpeg",
-        0.92
-      );
+
+      // Intentar con calidad decreciente hasta quedar bajo MAX_BYTES
+      const qualities = [0.85, 0.75, 0.65, 0.5];
+      let idx = 0;
+
+      function tryBlob() {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) { reject(new Error("No se pudo convertir la imagen")); return; }
+            if (blob.size <= MAX_BYTES || idx >= qualities.length - 1) {
+              resolve(new File([blob], "factura.jpg", { type: "image/jpeg" }));
+            } else {
+              idx++;
+              tryBlob();
+            }
+          },
+          "image/jpeg",
+          qualities[idx]
+        );
+      }
+      tryBlob();
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Imagen inválida")); };
     img.src = url;
