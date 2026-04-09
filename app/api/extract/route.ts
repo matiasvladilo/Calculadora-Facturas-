@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
-export const maxDuration = 60;
+export const maxDuration = 30;
 export const runtime = "nodejs";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -16,32 +16,17 @@ function detectMediaType(buffer: Buffer): SupportedMediaType {
   return "image/jpeg";
 }
 
-const PROMPT_ANALISIS = `Eres un experto en facturas chilenas de distribuidoras de alimentos y bebidas.
+const PROMPT_ANALISIS = `Eres un experto en facturas chilenas. Extrae TODOS los productos de esta imagen como JSON array.
 
-Primero analiza la estructura de este documento dentro de <analisis> tags.
-Luego extrae los productos como JSON dentro de <json> tags.
+FORMATO DE CANTIDADES EN FACTURAS CHILENAS (MUY IMPORTANTE):
+Los sistemas ERP chilenos usan coma como separador decimal con ceros: "16,000" = 16 unidades, NO 16000.
+Regla: si ves un número en la columna cantidad con coma y ceros al final (ej: 1,000 / 2,000 / 16,000 / 24,000), es un entero — ignorá la coma y los ceros. Nunca habrá 16000 unidades de un producto.
 
-<analisis>
-Responde estas preguntas observando la imagen:
-1. ¿Qué tipo de documento es? (factura electrónica, boleta, guía despacho, etc.)
-2. ¿Qué columnas tiene la tabla de productos? Lista cada columna exactamente como aparece
-3. ¿Cuál columna tiene el precio POR UNIDAD INDIVIDUAL de consumo? (no por caja)
-4. ¿Cuál columna tiene el precio TOTAL de la línea?
-5. ¿Los precios son netos (sin IVA) o brutos (con IVA incluido)?
-6. ¿Hay columnas de ILA, IABA u otro impuesto adicional? ¿Con qué porcentaje?
-7. ¿Hay columna de descuento? ¿En % o en $?
-8. ¿Las cantidades usan coma como decimal? (ej: 24,0 = 24 unidades; 16,000 = 16 unidades, NO 16000)
-9. ¿Hay productos en packs/cajas con múltiples unidades? (X6, X12, 6PK, etc.)
-10. ¿Hay DOS columnas de cantidad? Por ejemplo "CJ" (cajas) Y "UNS/UN" (unidades). Si hay ambas, ¿cuál representa las unidades individuales de consumo?
-</analisis>
+Responde SOLO con el array JSON, sin texto adicional. Precios SIN formato de miles: 16344 no "16.344".
 
-<json>
-Basándote en tu análisis, extrae TODOS los productos como array JSON.
-IMPORTANTE: Todos los valores numéricos deben ser números planos SIN formato — sin puntos ni comas como separadores de miles. Usa punto decimal si es necesario. Ejemplos: 16344 no "16.344", 16 no "16,000", 1636.2 no "1.636,2".
-Un objeto por producto, con estos campos exactos:
-
+Campos por producto:
 {
-  "producto": "nombre limpio del producto",
+  "producto": "nombre limpio",
   "precio_neto_unitario": null,
   "precio_bruto_unitario": null,
   "precio_neto_total": null,
@@ -56,20 +41,16 @@ Un objeto por producto, con estos campos exactos:
   "rayado": false
 }
 
-REGLAS DE CAMPOS:
-- precio_neto_unitario: precio por unidad SIN IVA. SOLO usar si la factura tiene columna EXPLÍCITA de precio neto por unidad (ej: "P.UNIT.NETO", "PRECIO UNIT NETO"). NO calcular dividiendo el total.
-- precio_bruto_unitario: precio por unidad individual YA con IVA e ILA incluidos. SOLO usar si la factura lo da directamente (ej: columna "Total Unidad", "Precio Unidad", "P.UNIT.BRUTO").
-- precio_neto_total: total neto de la línea (todas las unidades, sin IVA). Ej: columna "Valor", "Neto", "T.NETO", "Monto Neto". Este es el campo MÁS CONFIABLE en facturas chilenas — úsalo cuando exista.
-- precio_bruto_total: total de la línea con IVA+ILA. Ej: columna "P.BRUTO", "Total Factura".
-- Llena SOLO los campos relevantes. Los demás null. NO dupliques el mismo precio en dos campos. Si hay precio_neto_total, no necesitas calcular precio_neto_unitario.
-
-- cantidad: número de UNIDADES INDIVIDUALES de consumo. Si hay columnas "CJ" (cajas) Y "UNS/UN" (unidades), usa SIEMPRE el valor de unidades individuales (UNS/UN), NO el de cajas. Si la factura muestra "16,000" con coma decimal → 16 unidades (la coma es decimal, NO separador de miles). Si muestra cajas (CJ) sin columna de unidades individuales, y el precio ya es por unidad individual ("Total Unidad"), entonces cantidad = número de cajas.
-- ila_porcentaje: usa el valor exacto de la columna ILA/IABA si existe por fila. Si no, infiere por tipo de producto: cerveza/vino 20.5, destilados 31.5, bebida azucarada 10-18, resto 0
-- descuento_pct: % de descuento por línea si existe como columna separada
-- rayado: true SOLO si una línea recta cruza completamente el texto del producto. Círculos, ticks ✓ y marcas al costado = recepción verificada, NO es rayado
-- tipo_precio: "neto" si la factura tiene IVA desglosado al pie. "bruto" si es boleta
-- Ignorar: servicios logísticos, fletes, filas de totales/IVA/subtotales, datos de emisor/cliente
-</json>`;
+REGLAS:
+- precio_neto_total: columna "Valor"/"Neto"/"T.NETO" — MÁS CONFIABLE, úsalo cuando exista
+- precio_neto_unitario: SOLO si hay columna explícita. NO calcular dividiendo
+- precio_bruto_unitario: SOLO si hay columna explícita
+- cantidad: si hay CJ y UNS/UN, usar UNS/UN. Aplicar regla de formato ERP de arriba
+- tipo_precio: "neto" si hay IVA desglosado al pie, "bruto" si es boleta
+- ila_porcentaje: de columna ILA/IABA si existe; si no: cerveza/vino=20.5, destilados=31.5, bebida azucarada=10-18, resto=0
+- descuento_pct: % descuento por línea si existe
+- rayado: true SOLO si una línea cruza completamente el texto del producto
+- Ignorar: fletes, totales, IVA, subtotales, datos emisor/receptor`;
 
 
 export async function POST(req: NextRequest) {
@@ -86,8 +67,8 @@ export async function POST(req: NextRequest) {
     const mediaType = detectMediaType(buffer);
 
     const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 6000,
+      model: "claude-sonnet-4-6",
+      max_tokens: 2000,
       messages: [
         {
           role: "user",

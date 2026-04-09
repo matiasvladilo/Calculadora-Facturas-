@@ -6,4 +6,4 @@
   package = "@netlify/plugin-nextjs"
 
 [functions."api/extract"]
-  timeout = 60
+  timeout = 30

@@ -26,19 +26,24 @@ export function parsearRespuesta(
 ): { productos: Record<string, unknown>[] } | { error: string; debug?: string } {
   let jsonStr: string | null = null;
 
-  const jsonTagMatch = raw.match(/<json>([\s\S]*?)<\/json>/);
-  if (jsonTagMatch) {
-    const inner = jsonTagMatch[1].trim();
-    const arrayMatch = inner.match(/\[[\s\S]*\]/);
-    if (arrayMatch) jsonStr = arrayMatch[0];
+  // Prioridad: array directo, luego tags <json>, luego bloque markdown
+  const directMatch = raw.trim().match(/^\s*(\[[\s\S]*\])\s*$/);
+  if (directMatch) jsonStr = directMatch[1];
+  if (!jsonStr) {
+    const codeMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeMatch) jsonStr = codeMatch[1].trim();
+  }
+  if (!jsonStr) {
+    const jsonTagMatch = raw.match(/<json>([\s\S]*?)<\/json>/);
+    if (jsonTagMatch) {
+      const inner = jsonTagMatch[1].trim();
+      const arrayMatch = inner.match(/\[[\s\S]*\]/);
+      if (arrayMatch) jsonStr = arrayMatch[0];
+    }
   }
   if (!jsonStr) {
     const arrayMatch = raw.match(/\[[\s\S]*\]/);
     if (arrayMatch) jsonStr = arrayMatch[0];
-  }
-  if (!jsonStr) {
-    const codeMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeMatch) jsonStr = codeMatch[1].trim();
   }
   if (!jsonStr) {
     return {
