@@ -71,71 +71,6 @@ REGLAS DE CAMPOS:
 - Ignorar: servicios logísticos, fletes, filas de totales/IVA/subtotales, datos de emisor/cliente
 </json>`;
 
-const CAMPOS_NUMERICOS = [
-  "precio_neto_unitario", "precio_bruto_unitario",
-  "precio_neto_total", "precio_bruto_total",
-  "cantidad", "descuento_monto", "descuento_pct",
-  "ila_porcentaje", "impuesto_adicional",
-];
-
-function sanitizarNumero(val: unknown): number | null {
-  if (val === null || val === undefined) return null;
-  let s = String(val).trim().replace(/[$ ]/g, "");
-  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
-    s = s.replace(/\./g, "").replace(",", ".");
-  } else if (/^\d+,0+$/.test(s)) {
-    s = s.replace(/,0+$/, "");
-  } else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) {
-    s = s.replace(/,/g, "");
-  } else {
-    s = s.replace(",", ".");
-  }
-  const n = parseFloat(s);
-  return isNaN(n) ? null : n;
-}
-
-export function parsearRespuesta(raw: string): { productos: Record<string, unknown>[] } | { error: string; debug?: string } {
-  let jsonStr: string | null = null;
-
-  const jsonTagMatch = raw.match(/<json>([\s\S]*?)<\/json>/);
-  if (jsonTagMatch) {
-    const inner = jsonTagMatch[1].trim();
-    const arrayMatch = inner.match(/\[[\s\S]*\]/);
-    if (arrayMatch) jsonStr = arrayMatch[0];
-  }
-  if (!jsonStr) {
-    const arrayMatch = raw.match(/\[[\s\S]*\]/);
-    if (arrayMatch) jsonStr = arrayMatch[0];
-  }
-  if (!jsonStr) {
-    const codeMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeMatch) jsonStr = codeMatch[1].trim();
-  }
-  if (!jsonStr) {
-    return { error: "No se pudieron extraer productos. Intenta con mejor iluminación o recortá solo la tabla.", debug: raw.slice(0, 800) };
-  }
-
-  let productos;
-  try {
-    productos = JSON.parse(jsonStr);
-  } catch {
-    return { error: "Error al interpretar la respuesta. Intenta de nuevo.", debug: jsonStr.slice(0, 500) };
-  }
-
-  if (!Array.isArray(productos) || productos.length === 0) {
-    return { error: "No se encontraron productos en la imagen." };
-  }
-
-  productos = productos.map((p: Record<string, unknown>) => {
-    const limpio = { ...p };
-    for (const campo of CAMPOS_NUMERICOS) {
-      limpio[campo] = sanitizarNumero(limpio[campo]);
-    }
-    return limpio;
-  });
-
-  return { productos };
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -150,28 +85,43 @@ export async function POST(req: NextRequest) {
     const base64 = buffer.toString("base64");
     const mediaType = detectMediaType(buffer);
 
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 4000,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-            { type: "text", text: PROMPT_ANALISIS },
-          ],
-        },
-      ],
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          const anthropicStream = client.messages.stream({
+            model: "claude-sonnet-4-6",
+            max_tokens: 4000,
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+                  { type: "text", text: PROMPT_ANALISIS },
+                ],
+              },
+            ],
+          });
+
+          for await (const chunk of anthropicStream) {
+            if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
+              controller.enqueue(encoder.encode(chunk.delta.text));
+            }
+          }
+          controller.close();
+        } catch (err) {
+          controller.error(err);
+        }
+      },
     });
 
-    const rawRespuesta = response.content[0].type === "text" ? response.content[0].text : "";
-    const resultado = parsearRespuesta(rawRespuesta);
-
-    if ("error" in resultado) {
-      return NextResponse.json(resultado, { status: 422 });
-    }
-
-    return NextResponse.json({ productos: resultado.productos });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Accel-Buffering": "no",
+        "Cache-Control": "no-cache",
+      },
+    });
   } catch (err) {
     console.error("Error:", err);
     return NextResponse.json({ error: "Error procesando la imagen" }, { status: 500 });

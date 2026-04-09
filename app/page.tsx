@@ -7,6 +7,7 @@ import ProductCard from "@/components/ProductCard";
 import LoadingState from "@/components/LoadingState";
 import { ProcessedProduct, RawProduct } from "@/lib/types";
 import { calcularProducto, recalcularVenta } from "@/lib/calculations";
+import { parsearRespuesta } from "@/lib/extractorUtils";
 import { ReceiptText, RefreshCw, PlusCircle, Trash2 } from "lucide-react";
 
 interface Factura {
@@ -26,6 +27,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [errorDebug, setErrorDebug] = useState<string | null>(null);
   const [mostrarDebug, setMostrarDebug] = useState(false);
+  const [streamText, setStreamText] = useState<string>("");
 
   function handleImage(file: File) {
     setImageFile(file);
@@ -61,20 +63,41 @@ export default function Home() {
     setError(null);
     setErrorDebug(null);
     setMostrarDebug(false);
+    setStreamText("");
 
     try {
       const form = new FormData();
       form.append("image", imageFile);
 
       const res = await fetch("/api/extract", { method: "POST", body: form });
-      const data = await res.json();
 
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
         if (data.debug) setErrorDebug(data.debug);
         throw new Error(data.error || "Error del servidor");
       }
 
-      const raw: RawProduct[] = data.productos ?? [];
+      // Leer stream y mostrar texto en vivo
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        fullText += chunk;
+        setStreamText(fullText);
+      }
+
+      // Parsear la respuesta completa
+      const result = parsearRespuesta(fullText);
+      if ("error" in result) {
+        if (result.debug) setErrorDebug(result.debug);
+        throw new Error(result.error);
+      }
+
+      const raw: RawProduct[] = result.productos as unknown as RawProduct[];
       const ts = Date.now();
       const processed = raw.map((r, i) => calcularProducto(r, multiplicador, `${i}-${ts}`));
 
@@ -140,7 +163,7 @@ export default function Home() {
 
       <div className="px-4 flex flex-col gap-5 flex-1">
         {step === "loading" ? (
-          <LoadingState />
+          <LoadingState streamText={streamText} />
         ) : step === "results" ? (
           <>
             <MultiplierSelector value={multiplicador} onChange={handleMultiplicadorChange} disabled={false} />
