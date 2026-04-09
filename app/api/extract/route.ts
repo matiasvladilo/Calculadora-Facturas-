@@ -43,7 +43,7 @@ Campos por producto:
 
 REGLAS:
 - precio_neto_total: columna "Valor"/"Neto"/"T.NETO" — MÁS CONFIABLE, úsalo cuando exista
-- precio_neto_unitario: SOLO si hay columna explícita. NO calcular dividiendo
+- precio_neto_unitario: SOLO si hay columna explícita de precio neto por unidad. NUNCA calcular dividiendo total/cantidad — déjalo null si no hay columna explícita
 - precio_bruto_unitario: SOLO si hay columna explícita
 - cantidad: si hay CJ y UNS/UN, usar UNS/UN. Aplicar regla de formato ERP de arriba
 - tipo_precio: "neto" si hay IVA desglosado al pie, "bruto" si es boleta
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 2000,
+      max_tokens: 4000,
       messages: [
         {
           role: "user",
