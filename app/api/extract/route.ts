@@ -104,7 +104,8 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (err) {
-    console.error("Error:", err);
-    return NextResponse.json({ error: "Error procesando la imagen" }, { status: 500 });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("Error:", msg);
+    return NextResponse.json({ error: "Error procesando la imagen", debug: msg }, { status: 500 });
   }
 }
