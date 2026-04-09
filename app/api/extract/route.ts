@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
+export const maxDuration = 60;
+export const runtime = "nodejs";
+
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 type SupportedMediaType = "image/jpeg" | "image/png" | "image/webp" | "image/gif";
@@ -10,7 +13,7 @@ function detectMediaType(buffer: Buffer): SupportedMediaType {
   if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return "image/png";
   if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return "image/gif";
   if (buffer.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
-  return "image/jpeg"; // fallback seguro
+  return "image/jpeg";
 }
 
 const PROMPT_ANALISIS = `Eres un experto en facturas chilenas de distribuidoras de alimentos y bebidas.
@@ -68,8 +71,73 @@ REGLAS DE CAMPOS:
 - Ignorar: servicios logísticos, fletes, filas de totales/IVA/subtotales, datos de emisor/cliente
 </json>`;
 
+const CAMPOS_NUMERICOS = [
+  "precio_neto_unitario", "precio_bruto_unitario",
+  "precio_neto_total", "precio_bruto_total",
+  "cantidad", "descuento_monto", "descuento_pct",
+  "ila_porcentaje", "impuesto_adicional",
+];
+
+function sanitizarNumero(val: unknown): number | null {
+  if (val === null || val === undefined) return null;
+  let s = String(val).trim().replace(/[$ ]/g, "");
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else if (/^\d+,0+$/.test(s)) {
+    s = s.replace(/,0+$/, "");
+  } else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) {
+    s = s.replace(/,/g, "");
+  } else {
+    s = s.replace(",", ".");
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+export function parsearRespuesta(raw: string): { productos: Record<string, unknown>[] } | { error: string; debug?: string } {
+  let jsonStr: string | null = null;
+
+  const jsonTagMatch = raw.match(/<json>([\s\S]*?)<\/json>/);
+  if (jsonTagMatch) {
+    const inner = jsonTagMatch[1].trim();
+    const arrayMatch = inner.match(/\[[\s\S]*\]/);
+    if (arrayMatch) jsonStr = arrayMatch[0];
+  }
+  if (!jsonStr) {
+    const arrayMatch = raw.match(/\[[\s\S]*\]/);
+    if (arrayMatch) jsonStr = arrayMatch[0];
+  }
+  if (!jsonStr) {
+    const codeMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeMatch) jsonStr = codeMatch[1].trim();
+  }
+  if (!jsonStr) {
+    return { error: "No se pudieron extraer productos. Intenta con mejor iluminación o recortá solo la tabla.", debug: raw.slice(0, 800) };
+  }
+
+  let productos;
+  try {
+    productos = JSON.parse(jsonStr);
+  } catch {
+    return { error: "Error al interpretar la respuesta. Intenta de nuevo.", debug: jsonStr.slice(0, 500) };
+  }
+
+  if (!Array.isArray(productos) || productos.length === 0) {
+    return { error: "No se encontraron productos en la imagen." };
+  }
+
+  productos = productos.map((p: Record<string, unknown>) => {
+    const limpio = { ...p };
+    for (const campo of CAMPOS_NUMERICOS) {
+      limpio[campo] = sanitizarNumero(limpio[campo]);
+    }
+    return limpio;
+  });
+
+  return { productos };
+}
+
 export async function POST(req: NextRequest) {
-  let rawRespuesta = "";
   try {
     const formData = await req.formData();
     const image = formData.get("image") as File | null;
@@ -84,7 +152,7 @@ export async function POST(req: NextRequest) {
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 6000,
+      max_tokens: 4000,
       messages: [
         {
           role: "user",
@@ -96,89 +164,16 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    rawRespuesta = response.content[0].type === "text" ? response.content[0].text : "";
+    const rawRespuesta = response.content[0].type === "text" ? response.content[0].text : "";
+    const resultado = parsearRespuesta(rawRespuesta);
 
-    // Extraer JSON de dentro de <json> tags
-    let jsonStr: string | null = null;
-
-    const jsonTagMatch = rawRespuesta.match(/<json>([\s\S]*?)<\/json>/);
-    if (jsonTagMatch) {
-      const inner = jsonTagMatch[1].trim();
-      const arrayMatch = inner.match(/\[[\s\S]*\]/);
-      if (arrayMatch) jsonStr = arrayMatch[0];
+    if ("error" in resultado) {
+      return NextResponse.json(resultado, { status: 422 });
     }
 
-    // Fallback: buscar array JSON en cualquier parte
-    if (!jsonStr) {
-      const arrayMatch = rawRespuesta.match(/\[[\s\S]*\]/);
-      if (arrayMatch) jsonStr = arrayMatch[0];
-    }
-
-    // Fallback: bloque markdown
-    if (!jsonStr) {
-      const codeMatch = rawRespuesta.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (codeMatch) jsonStr = codeMatch[1].trim();
-    }
-
-    if (!jsonStr) {
-      return NextResponse.json(
-        { error: "No se pudieron extraer productos. Intenta con mejor iluminación o recorta solo la tabla.", debug: rawRespuesta.slice(0, 800) },
-        { status: 422 }
-      );
-    }
-
-    let productos;
-    try {
-      productos = JSON.parse(jsonStr);
-    } catch {
-      return NextResponse.json(
-        { error: "Error al interpretar la respuesta. Intenta de nuevo.", debug: jsonStr.slice(0, 500) },
-        { status: 422 }
-      );
-    }
-
-    // Sanitizar: Claude a veces devuelve números como strings con formato ("1,636.2", "5.698", etc.)
-    const CAMPOS_NUMERICOS = [
-      "precio_neto_unitario", "precio_bruto_unitario",
-      "precio_neto_total", "precio_bruto_total",
-      "cantidad", "descuento_monto", "descuento_pct",
-      "ila_porcentaje", "impuesto_adicional",
-    ];
-
-    productos = productos.map((p: Record<string, unknown>) => {
-      const limpio = { ...p };
-      for (const campo of CAMPOS_NUMERICOS) {
-        const val = limpio[campo];
-        if (val === null || val === undefined) { limpio[campo] = null; continue; }
-        // Siempre sanitizar — Claude puede devolver 16.344 como float JSON (= 16344 pesos chilenos)
-        // String() convierte el number a string, luego la regex detecta el formato correcto
-        let s = String(val).trim().replace(/[$ ]/g, "");
-        if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
-          // Formato con punto miles y coma decimal: "1.636,2" → "1636.2"
-          s = s.replace(/\./g, "").replace(",", ".");
-        } else if (/^\d+,0+$/.test(s)) {
-          // Formato ERP chileno: "16,000" = 16 unidades (coma decimal, ceros finales)
-          s = s.replace(/,0+$/, "");
-        } else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) {
-          // Formato anglosajón con coma miles y punto decimal: "1,636.2" → "1636.2"
-          s = s.replace(/,/g, "");
-        } else {
-          // Sin separador de miles: reemplazar coma decimal si existe
-          s = s.replace(",", ".");
-        }
-        const n = parseFloat(s);
-        limpio[campo] = isNaN(n) ? null : n;
-      }
-      return limpio;
-    });
-
-    if (!Array.isArray(productos) || productos.length === 0) {
-      return NextResponse.json({ error: "No se encontraron productos en la imagen." }, { status: 422 });
-    }
-
-    return NextResponse.json({ productos });
+    return NextResponse.json({ productos: resultado.productos });
   } catch (err) {
-    console.error("Error:", err, "Raw:", rawRespuesta.slice(0, 300));
+    console.error("Error:", err);
     return NextResponse.json({ error: "Error procesando la imagen" }, { status: 500 });
   }
 }
