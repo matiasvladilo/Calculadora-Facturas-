@@ -12,8 +12,8 @@ interface Props {
 
 // Convierte cualquier imagen (HEIC, BMP, WEBP, etc.) a JPEG vía canvas
 // Garantiza que Anthropic siempre recibe un formato soportado
-const MAX_PX = 1000; // facturas son texto — 1000px es suficiente para OCR y reduce tiempo de API
-const MAX_BYTES = 1.5 * 1024 * 1024;
+const MAX_PX = 1600; // tickets largos necesitan más resolución para leer el texto
+const MAX_BYTES = 4 * 1024 * 1024; // bajo el límite de 5MB de Anthropic
 
 function toJpeg(source: File | Blob): Promise<File> {
   return new Promise((resolve, reject) => {

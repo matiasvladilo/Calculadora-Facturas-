@@ -21,6 +21,30 @@ export function sanitizarNumero(val: unknown): number | null {
   return isNaN(n) ? null : n;
 }
 
+function extractCompleteObjects(text: string): Record<string, unknown>[] | null {
+  const results: Record<string, unknown>[] = [];
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let objStart = -1;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (escape) { escape = false; continue; }
+    if (c === "\\" && inString) { escape = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === "{") { if (depth === 0) objStart = i; depth++; }
+    else if (c === "}") {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        try { results.push(JSON.parse(text.substring(objStart, i + 1))); } catch {}
+        objStart = -1;
+      }
+    }
+  }
+  return results.length > 0 ? results : null;
+}
+
 export function parsearRespuesta(
   raw: string
 ): { productos: Record<string, unknown>[] } | { error: string; debug?: string } {
@@ -56,7 +80,11 @@ export function parsearRespuesta(
   try {
     productos = JSON.parse(jsonStr);
   } catch {
-    return { error: "Error al interpretar la respuesta. Intenta de nuevo.", debug: jsonStr.slice(0, 500) };
+    // JSON cortado (token limit): extraer objetos completos que alcanzaron
+    productos = extractCompleteObjects(jsonStr);
+    if (!productos) {
+      return { error: "Error al interpretar la respuesta. Intenta de nuevo.", debug: jsonStr.slice(0, 500) };
+    }
   }
 
   if (!Array.isArray(productos) || productos.length === 0) {
