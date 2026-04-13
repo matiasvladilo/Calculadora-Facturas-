@@ -5,5 +5,5 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-[functions."api/extract"]
-  timeout = 30
+[functions."___netlify-server-handler"]
+  timeout = 60
