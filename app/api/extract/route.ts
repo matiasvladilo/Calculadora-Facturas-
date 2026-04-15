@@ -45,8 +45,9 @@ REGLAS:
 - precio_neto_total: columna "Valor"/"Neto"/"T.NETO" — MÁS CONFIABLE, úsalo cuando exista
 - precio_neto_unitario: SOLO si hay columna explícita de precio neto por unidad. NUNCA calcular dividiendo total/cantidad — déjalo null si no hay columna explícita
 - precio_bruto_unitario: SOLO si hay columna explícita
-- cantidad: expresar SIEMPRE en unidades individuales, no en cajas.
-  * Si unidad es CJ (caja): buscar "NxM" en el nombre del producto (ej: "6x1L" → N=6). cantidad = CANT_CJ × N. precio_neto_total = columna Valor (total de la línea). precio_bruto_unitario = PRECIO_CJ / N (precio por unidad individual).
+- cantidad: expresar SIEMPRE en unidades individuales.
+  * Si columna unidad dice "CJ" o "CAJA": buscar "NxM" en el nombre (ej: "6x1L" → N=6). cantidad = CANT_CJ × N. precio_bruto_unitario = PRECIO_UNIT_FACTURA / N.
+  * Si columna unidad dice "UNI", "UN", "u" u otro: la cantidad ya es individual — usar directamente SIN multiplicar. El "NxM" en el nombre es solo descriptivo, ignorarlo para la cantidad.
   * Si hay columna UNS/UN además de CJ, usar el valor de UNS/UN directamente.
   * Aplicar regla de formato ERP de arriba para comas decimales.
 - tipo_precio: "neto" si hay IVA desglosado al pie, "bruto" si es boleta
