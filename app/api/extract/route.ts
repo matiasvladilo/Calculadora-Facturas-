@@ -41,10 +41,11 @@ Campos por producto:
   "rayado": false
 }
 
-REGLAS:
-- precio_neto_total: columna "Valor"/"Neto"/"T.NETO" — MÁS CONFIABLE, úsalo cuando exista
-- precio_neto_unitario: SOLO si hay columna explícita de precio neto por unidad. NUNCA calcular dividiendo total/cantidad — déjalo null si no hay columna explícita
-- precio_bruto_unitario: SOLO si hay columna explícita
+REGLAS DE PRECIO (prioridad: unitario > total):
+- precio_neto_unitario: si existe columna "PRECIO UNIT", "P.UNIT", "Precio", "Precio Base", "P.UNIT.NETO" u similar → úsala. Es neto si la factura muestra IVA desglosado al pie. Este precio es SIN descuento aplicado.
+- precio_bruto_unitario: si la columna unitaria es claramente bruta (ej: "P.UNIT.BRUTO", o la factura es boleta).
+- precio_neto_total: columna "Valor"/"Neto"/"Total"/"T.NETO" — úsalo ADEMÁS del unitario cuando exista. Puede incluir descuento ya aplicado.
+- NUNCA calcular precio unitario dividiendo total/cantidad.
 - cantidad: expresar SIEMPRE en unidades individuales.
   * Si columna unidad dice "CJ" o "CAJA": buscar "NxM" en el nombre (ej: "6x1L" → N=6). cantidad = CANT_CJ × N. precio_bruto_unitario = PRECIO_UNIT_FACTURA / N.
   * Si columna unidad dice "UNI", "UN", "u" u otro: la cantidad ya es individual — usar directamente SIN multiplicar. El "NxM" en el nombre es solo descriptivo, ignorarlo para la cantidad.
