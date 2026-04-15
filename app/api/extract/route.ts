@@ -22,7 +22,13 @@ FORMATO DE CANTIDADES EN FACTURAS CHILENAS (MUY IMPORTANTE):
 Los sistemas ERP chilenos usan coma como separador decimal con ceros: "16,000" = 16 unidades, NO 16000.
 Regla: si ves un número en la columna cantidad con coma y ceros al final (ej: 1,000 / 2,000 / 16,000 / 24,000), es un entero — ignorá la coma y los ceros. Nunca habrá 16000 unidades de un producto.
 
-Responde SOLO con el array JSON, sin texto adicional. Precios SIN formato de miles: 16344 no "16.344".
+PASO 1 — Antes de extraer, identifica el formato mirando los encabezados de columna:
+- ¿Hay columna "P.Lista"? → todos los productos usan P.Lista como precio_bruto_unitario
+- ¿Hay columna "PRECIO UNIT"/"Precio"? → todos usan esa columna como precio_neto_unitario
+- ¿Hay mezcla de CJ y UNI en columna unidad? → aplicar regla CJ/UNI a cada fila según su valor
+Aplica la MISMA regla a TODOS los productos sin excepción.
+
+PASO 2 — Responde SOLO con el array JSON, sin texto adicional. Precios SIN formato de miles: 16344 no "16.344".
 
 Campos por producto:
 {
