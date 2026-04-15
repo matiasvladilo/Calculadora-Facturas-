@@ -41,16 +41,24 @@ Campos por producto:
   "rayado": false
 }
 
-REGLAS DE PRECIO (prioridad: unitario > total):
-- precio_neto_unitario: si existe columna "PRECIO UNIT", "P.UNIT", "Precio", "Precio Base", "P.UNIT.NETO" u similar → úsala. Es neto si la factura muestra IVA desglosado al pie. Este precio es SIN descuento aplicado.
-- precio_bruto_unitario: si la columna unitaria es claramente bruta (ej: "P.UNIT.BRUTO", o la factura es boleta).
-- precio_neto_total: columna "Valor"/"Neto"/"Total"/"T.NETO" — úsalo ADEMÁS del unitario cuando exista. Puede incluir descuento ya aplicado.
-- NUNCA calcular precio unitario dividiendo total/cantidad.
-- cantidad: expresar SIEMPRE en unidades individuales.
-  * Si columna unidad dice "CJ" o "CAJA": buscar "NxM" en el nombre (ej: "6x1L" → N=6). cantidad = CANT_CJ × N. precio_bruto_unitario = PRECIO_UNIT_FACTURA / N.
-  * Si columna unidad dice "UNI", "UN", "u" u otro: la cantidad ya es individual — usar directamente SIN multiplicar. El "NxM" en el nombre es solo descriptivo, ignorarlo para la cantidad.
-  * Si hay columna UNS/UN además de CJ, usar el valor de UNS/UN directamente.
-  * Aplicar regla de formato ERP de arriba para comas decimales.
+REGLAS DE CANTIDAD Y PRECIO:
+
+Si unidad = UNI / UN / u (unidad individual):
+- cantidad = valor columna CANT directamente
+- precio_neto_unitario = columna "PRECIO UNIT"/"Precio"/"P.UNIT" (es neto si hay IVA al pie)
+- precio_neto_total = columna "Valor"/"Total"/"T.NETO"
+
+Si unidad = CJ / CAJA:
+- Buscar N en el nombre: primer número del patrón "NxM" → ej: "6x1L" → N=6, "12x500cc" → N=12
+- cantidad = CANT_CJ × N  (convertir a unidades individuales)
+- precio_bruto_unitario = PRECIO_UNIT_CJ / N  (dividir precio de caja por unidades)
+- precio_neto_total = columna Valor (total de la línea, ya con descuento)
+- unidad = "UN"
+- EJEMPLO: "1 CJ | Chocolate Suizo 6x1L | PRECIO UNIT: 14868 | VALOR: 12638" →
+  cantidad: 6, precio_bruto_unitario: 2478, precio_neto_total: 12638
+
+Si hay columna UNS/UN además de CJ → usar ese valor como cantidad directamente.
+NUNCA calcular precio unitario dividiendo total/cantidad.
 - tipo_precio: "neto" si hay IVA desglosado al pie, "bruto" si es boleta
 - ila_porcentaje: de columna ILA/IABA si existe; si no: cerveza/vino=20.5, destilados=31.5, bebida azucarada=10-18, resto=0
 - descuento_pct: % descuento por línea si existe
