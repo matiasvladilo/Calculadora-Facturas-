@@ -43,6 +43,12 @@ Campos por producto:
 
 REGLAS DE CANTIDAD Y PRECIO:
 
+Si hay columna "P.Lista" o "P.List" o "Precio Lista":
+- precio_bruto_unitario = valor de P.Lista (ya incluye IVA + ILA + todo)
+- descuento_pct = ((P.Lista - P.Unit) / P.Lista) × 100 si difieren, si no null
+- precio_neto_total = columna "Valor Total"/"Total"
+- EJEMPLO: "P.Lista: 1060, P.Unit: 774, Valor: 6966" → precio_bruto_unitario: 1060, descuento_pct: 27
+
 Si unidad = UNI / UN / u (unidad individual):
 - cantidad = valor columna CANT directamente
 - precio_neto_unitario = columna "PRECIO UNIT"/"Precio"/"P.UNIT" (es neto si hay IVA al pie)
